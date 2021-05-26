@@ -1,16 +1,15 @@
-from simulation.ISimulating import ISimulating
+import math
+
+from src.simulation.ISimulating import ISimulating
 
 
 class Servo(ISimulating):
-    def __init__(self, min_rotation: float, max_rotation: float, degrees_per_second: float):
-        self.min_rotation = min_rotation
-        self.max_rotation = max_rotation
+    def __init__(self, degrees_per_second: float):
         self.degrees_per_second = degrees_per_second
-        self.rotation = 0
-        self.target_rotation = 0
+        self.rotation = 0.0
 
-    def simulate(self, seconds_delta: float, seconds_passed: float):
-        pass
+    def get_rotation_at_time(self, seconds_passed):
+        return abs((math.radians(seconds_passed / self.degrees_per_second) % 6.28319) - 3.14159)
 
-    def set_rotation(self, rotation: float):
-        self.target_rotation = rotation
+    def simulate(self, bot, seconds_delta: float, seconds_passed: float):
+        self.rotation = self.get_rotation_at_time(seconds_passed)
