@@ -9,7 +9,7 @@ class Servo(ISimulating):
         self.rotation = 0.0
 
     def get_rotation_at_time(self, seconds_passed):
-        return abs((math.radians(seconds_passed / self.degrees_per_second) % 6.28319) - 3.14159)
+        return abs((math.radians(seconds_passed / self.degrees_per_second) % 6.28319) - 3.14159) - 1.57079
 
     def simulate(self, bot, seconds_delta: float, seconds_passed: float):
         self.rotation = self.get_rotation_at_time(seconds_passed)

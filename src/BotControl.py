@@ -1,17 +1,21 @@
 import paho.mqtt.client as mqtt
 import sys
 
+from programs.ReconnaissanceProgram import ReconnaissanceProgram
 
-def on_message(client, userdata, msg):
-    print("received message: ", str(msg.payload.decode("utf-8")))
+client = mqtt.Client("controller")
+program = ReconnaissanceProgram(client)
+
+
+def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage):
+    program.on_message(msg)
 
 
 if __name__ == '__main__':
-    client = mqtt.Client("controller")
     client.on_message = on_message
 
     client.username_pw_set(sys.argv[1], sys.argv[2])
     client.connect('localhost')
-    client.subscribe('sensors/#')
+    client.subscribe([('sensors/#', 0), ('robots/#', 0)])
 
     client.loop_forever()
