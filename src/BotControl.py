@@ -14,8 +14,8 @@ def on_message(client: mqtt.Client, userdata, msg: mqtt.MQTTMessage):
 if __name__ == '__main__':
     client.on_message = on_message
 
-    client.username_pw_set(sys.argv[1], sys.argv[2])
-    client.connect('localhost')
+    # client.username_pw_set(sys.argv[1], sys.argv[2])
+    client.connect('localhost', 10000)
     client.subscribe([('sensors/#', 0), ('robots/#', 0)])
 
     client.loop_forever()

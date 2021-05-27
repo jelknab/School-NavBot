@@ -6,5 +6,5 @@ services:
       - ./mosquitto/passwd:/mosquitto/config/passwd
       - ./mosquitto/access.acl:/mosquitto/config/acl
     ports:
-      - "1883:1883"
+      - "10000:1883"
       - "9001:9001"

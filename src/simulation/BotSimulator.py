@@ -28,7 +28,7 @@ room = [
     ((7000, -5000), (-5000, -5000))
 ]
 
-robot = Bot(0.25, 0.84)
+robot = Bot(0.25, 0.84, 0.20)
 servo = Servo(.17 / 60)
 distance_sensor = DistanceSensor(200, 6000, 250, room, servo)
 
@@ -72,8 +72,8 @@ def draw_distance_sensor(sample_buffer: List[DistanceSample]):
             color=(255, 0, 255),
             start_pos=camera(sample.position[0], sample.position[1]),
             end_pos=camera(
-                sample.position[0] + math.sin(sample.servo_rotation + robot.rotation) * sample.distance_mm,
-                sample.position[1] + math.cos(sample.servo_rotation + robot.rotation) * sample.distance_mm
+                sample.position[0] + math.sin(sample.servo_rotation + sample.rotation) * sample.distance_mm,
+                sample.position[1] + math.cos(sample.servo_rotation + sample.rotation) * sample.distance_mm
             )
         )
 
@@ -85,6 +85,8 @@ def draw_text():
     pygame.draw.rect(screen, color=(0, 0, 0), rect=pygame.Rect(0, 0, 400, 50))
     text = font.render(f'[{robot.x:2.2f}, {robot.y:2.2f}]', True, (255, 0, 0))
     screen.blit(text, (10, 10))
+    text = font.render(f'r = {math.degrees(robot.rotation):3.2f}', True, (255, 0, 0))
+    screen.blit(text, (10, 30))
 
 
 def simulate(seconds_passed, total_seconds):

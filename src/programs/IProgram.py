@@ -4,13 +4,16 @@ from typing import List
 
 from paho.mqtt.client import MQTTMessage, Client
 
+import struct
+
 
 class Measurement:
-    def __init__(self, bearing: float, progress: float, servo: float, distance: float):
+    def __init__(self, command_id: int, progress: float, rotation: float, servo_rotation: float, distance: float):
+        self.command_id = command_id
         self.distance = distance
-        self.servo = servo
+        self.servo = servo_rotation
         self.progress = progress
-        self.bearing = bearing
+        self.bearing = rotation
 
 
 class IProgram:
@@ -26,20 +29,20 @@ class IProgram:
         self.topics.get(topic_topic, 'Unknown topic')(topic_robot_id, msg)
 
     def decode_robot_data(self, robot_id: int, msg: MQTTMessage):
-        data = array('f')
-        data.frombytes(msg.payload)
+        item_size = struct.calcsize('bffff')
+        item_count = len(msg.payload) // item_size
+        data = struct.unpack('bffff'*item_count, msg.payload)
 
         data_container: List[Measurement] = []
 
-        for offset in range(len(data) // 4):
-            data_container.append(
-                Measurement(
-                    data[offset * 4 + 0],
-                    data[offset * 4 + 1],
-                    data[offset * 4 + 2],
-                    data[offset * 4 + 3],
-                )
-            )
+        for index in range(item_count):
+            data_container.append(Measurement(
+                data[index * 5 + 0],
+                data[index * 5 + 1],
+                data[index * 5 + 2],
+                data[index * 5 + 3],
+                data[index * 5 + 4]
+            ))
 
         self.on_sensor_data(robot_id, data_container)
 
