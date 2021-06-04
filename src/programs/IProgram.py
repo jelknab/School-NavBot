@@ -6,6 +6,16 @@ from paho.mqtt.client import MQTTMessage, Client
 
 import struct
 
+class Command:
+    def __init__(self, command_id: int, command: str, value: float):
+        self.value = value
+        self.command = command
+        self.command_id = command_id
+
+    def pack(self):
+        return pack('bcf', self.command_id, self.command.encode('ascii'), self.value)
+
+
 
 class Measurement:
     def __init__(self, command_id: int, progress: float, rotation: float, servo_rotation: float, distance: float):
@@ -17,9 +27,8 @@ class Measurement:
 
 
 class IProgram:
-    def send_command(self, bot_id: int, command_id: int, command: str, value: float):
-        command = pack('bcf', command_id, command.encode('ascii'), value)
-        self.mqtt_client.publish(f'navigation/{bot_id}', command)
+    def send_command(self, bot_id: int, command: Command):
+        self.mqtt_client.publish(f'navigation/{bot_id}', command.pack())
 
     def on_message(self, msg: MQTTMessage):
         topic_parts = msg.topic.split('/')

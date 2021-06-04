@@ -72,8 +72,8 @@ def draw_distance_sensor(sample_buffer: List[DistanceSample]):
             color=(255, 0, 255),
             start_pos=camera(sample.position[0], sample.position[1]),
             end_pos=camera(
-                sample.position[0] + math.sin(sample.servo_rotation + sample.rotation) * sample.distance_mm,
-                sample.position[1] + math.cos(sample.servo_rotation + sample.rotation) * sample.distance_mm
+                sample.position[0] + math.sin(sample.servo_rotation + sample.rotation) * sample.distance_m * 1000,
+                sample.position[1] + math.cos(sample.servo_rotation + sample.rotation) * sample.distance_m * 1000
             )
         )
 

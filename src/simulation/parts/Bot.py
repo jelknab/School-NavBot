@@ -104,17 +104,17 @@ class Bot(ISimulating):
         self.y += math.cos(self.rotation) * difference * 1000
 
     def rotate(self, seconds_delta: float, seconds_passed: float):
-        rotation_distance = self.wheel_circumference / 360 * self.command.value
+        rotation_distance = self.wheel_circumference / (math.pi * 2) * self.command.value
         t = self.command.time_elapsed(seconds_passed)
 
         old_progress = self.command.progress
         self.command.progress = (self.get_progress(t, rotation_distance) / rotation_distance) * self.command.value
         difference = self.command.progress - old_progress
 
-        self.rotation = (self.rotation + math.radians(difference)) % (math.pi * 2)
+        self.rotation = (self.rotation + difference) % (math.pi * 2)
 
     def simulate(self, bot, seconds_delta: float, seconds_passed: float):
-        if self.command.progress == self.command.value and seconds_passed - self.last_message_timestamp > 1:
+        if self.command.value - self.command.progress < 0.001 and seconds_passed - self.last_message_timestamp > 5:
             self.last_message_timestamp = seconds_passed
             self.request_command()
             pass

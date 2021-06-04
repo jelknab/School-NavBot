@@ -17,10 +17,10 @@ class DistanceSample:
         self.command_id = bot.command.id
         self.rotation = bot.rotation
         self.servo_rotation = servo_rotation
-        self.distance_mm = distance_mm
+        self.distance_m = distance_mm
 
     def as_array(self):
-        return [self.command_id, self.progress, self.rotation, self.servo_rotation, self.distance_mm]
+        return [self.command_id, self.progress, self.rotation, self.servo_rotation, self.distance_m]
 
 
 class DistanceSensor(ISimulating):
@@ -60,7 +60,7 @@ class DistanceSensor(ISimulating):
                 distances.append(math.hypot(intersection.x - bot.x, intersection.y - bot.y))
 
         if len(distances) > 0:
-            return min(distances)
+            return min(distances) / 1000
 
         return 0
 
