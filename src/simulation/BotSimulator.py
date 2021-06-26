@@ -8,13 +8,16 @@ from src.simulation.parts.Bot import Bot, Command
 from src.simulation.parts.DistanceSensor import DistanceSensor, DistanceSample
 from src.simulation.parts.Servo import Servo
 
-os.environ['SDL_VIDEO_WINDOW_POS'] = "%d,%d" % (0, 30)
+display = False
 
-pygame.init()
-screen = pygame.display.set_mode([1000, 1000])
-camera_x = screen.get_width() / 2
-camera_y = screen.get_height() / 2
-display_scale = 0.04  # Pixel per mm
+if display:
+    os.environ['SDL_VIDEO_WINDOW_POS'] = "%d,%d" % (0, 30)
+
+    pygame.init()
+    screen = pygame.display.set_mode([1000, 1000])
+    camera_x = screen.get_width() / 2
+    camera_y = screen.get_height() / 2
+    display_scale = 0.04  # Pixel per mm
 
 simulation_timestamp = time.time()
 simulation_speed_s = .004  # seconds = 250hz
@@ -28,9 +31,9 @@ room = [
     ((7000, -5000), (-5000, -5000))
 ]
 
-robot = Bot(0.25, 0.84, 0.20)
+robot = Bot(0.1, 0.2, 0.20)
 servo = Servo(.17 / 60)
-distance_sensor = DistanceSensor(200, 6000, 250, room, servo)
+distance_sensor = DistanceSensor(200, 8000, 100, room, servo)
 
 
 def camera(x, y):
@@ -89,31 +92,36 @@ def draw_text():
     screen.blit(text, (10, 30))
 
 
-def simulate(seconds_passed, total_seconds):
+def draw():
     # fade
     s = pygame.Surface((screen.get_width(), screen.get_height()))
     s.set_alpha(1)
     s.fill((0, 0, 0))
     screen.blit(s, (0, 0))
 
-    robot.simulate(robot, seconds_passed, total_seconds)
-    servo.simulate(robot, seconds_passed, total_seconds)
-    distance_sensor.simulate(robot, seconds_passed, total_seconds)
-
     draw_environment()
     draw_servo()
     draw_distance_sensor(distance_sensor.sample_buffer)
     draw_text()
-
     pygame.display.flip()
+
+
+def simulate(seconds_passed, total_seconds):
+    robot.simulate(robot, seconds_passed, total_seconds)
+    servo.simulate(robot, seconds_passed, total_seconds)
+    distance_sensor.simulate(robot, seconds_passed, total_seconds)
+
+    if display:
+        draw()
 
 
 if __name__ == '__main__':
     run = True
     while run:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                run = False
+        if display:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    run = False
 
         while time.time() - simulation_timestamp < simulation_speed_s:
             pass

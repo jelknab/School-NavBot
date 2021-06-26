@@ -15,12 +15,11 @@ class DistanceSample:
         self.position = (bot.x, bot.y)
         self.progress = bot.command.progress
         self.command_id = bot.command.id
-        self.rotation = bot.rotation
         self.servo_rotation = servo_rotation
         self.distance_m = distance_mm
 
     def as_array(self):
-        return [self.command_id, self.progress, self.rotation, self.servo_rotation, self.distance_m]
+        return [self.command_id, self.progress, self.servo_rotation, self.distance_m]
 
 
 class DistanceSensor(ISimulating):
@@ -42,7 +41,7 @@ class DistanceSensor(ISimulating):
         self.mqtt_client.connect('localhost', 10000)
 
     def send_sample_buffer(self):
-        samples = pack('bffff'*len(self.sample_buffer), *[item for sample in self.sample_buffer for item in sample.as_array()])
+        samples = pack('bfff'*len(self.sample_buffer), *[item for sample in self.sample_buffer for item in sample.as_array()])
         self.mqtt_client.publish('sensors/1', samples)
 
     def find_distance(self, bot: Bot, servo_rotation: float):
@@ -65,7 +64,7 @@ class DistanceSensor(ISimulating):
         return 0
 
     def simulate(self, bot: Bot, seconds_delta: float, seconds_passed: float):
-        if len(self.sample_buffer) > self.sample_frequency_hz:
+        if len(self.sample_buffer) > self.sample_frequency_hz / 4:
             self.send_sample_buffer()
             self.sample_buffer.clear()
 

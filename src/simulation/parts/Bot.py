@@ -24,7 +24,7 @@ class Bot(ISimulating):
         self.y = 0
         self.id = 1
         self.speed = 0
-        self.rotation = math.pi / 2 * 0
+        self.rotation = 0
         self.command: Command = Command(-1, '', 0, 0)
         self.speed_ms = max_speed_m_s
         self.accel_ms = speed_change_m_s
@@ -57,7 +57,7 @@ class Bot(ISimulating):
         acceleration_duration = self.speed_ms / self.accel_ms
         acceleration_distance = 0.5 * self.accel_ms * acceleration_duration ** 2
 
-        constant_distance = distance - acceleration_distance * 2
+        constant_distance = abs(distance - acceleration_distance * 2)
         constant_duration = constant_distance / self.speed_ms
 
         # relative times for parts of the curve
@@ -69,10 +69,13 @@ class Bot(ISimulating):
         constant_distance = self.speed_ms * constant_t
         deceleration_distance = self.speed_ms * deceleration_t - self.accel_ms / 2 * deceleration_t ** 2
 
-        return acceleration_distance + constant_distance + deceleration_distance
+        if distance > 0:
+            return acceleration_distance + constant_distance + deceleration_distance
+        else:
+            return -(acceleration_distance + constant_distance + deceleration_distance)
 
     def progress_partial_acceleration(self, t: float, distance: float):
-        acceleration_distance = distance / 2
+        acceleration_distance = abs(distance / 2)
         acceleration_duration = math.sqrt((2 * acceleration_distance) / self.accel_ms)
         acceleration_top_speed = self.accel_ms * acceleration_duration
 
@@ -82,7 +85,10 @@ class Bot(ISimulating):
         acceleration_distance = 0.5 * self.accel_ms * acceleration_t ** 2
         deceleration_distance = acceleration_top_speed * deceleration_t - self.accel_ms / 2 * deceleration_t ** 2
 
-        return acceleration_distance + deceleration_distance
+        if distance > 0:
+            return acceleration_distance + deceleration_distance
+        else:
+            return -(acceleration_distance + deceleration_distance)
 
     def get_progress(self, t: float, distance: float) -> float:
         accel_duration = self.speed_ms / self.accel_ms
@@ -111,10 +117,14 @@ class Bot(ISimulating):
         self.command.progress = (self.get_progress(t, rotation_distance) / rotation_distance) * self.command.value
         difference = self.command.progress - old_progress
 
-        self.rotation = (self.rotation + difference) % (math.pi * 2)
+        self.rotation = self.rotation + difference
+        if self.rotation > math.pi * 2:
+            self.rotation -= math.pi * 2
+        if self.rotation < math.pi * -2:
+            self.rotation += math.pi * 2
 
     def simulate(self, bot, seconds_delta: float, seconds_passed: float):
-        if self.command.value - self.command.progress < 0.001 and seconds_passed - self.last_message_timestamp > 5:
+        if abs(self.command.value - self.command.progress) < 0.00001 and seconds_passed - self.last_message_timestamp > 5:
             self.last_message_timestamp = seconds_passed
             self.request_command()
             pass
