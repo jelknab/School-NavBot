@@ -125,9 +125,9 @@ class Motor {
 };
 
 Motor motorLeft(LEFT_PWM_A_PIN, LEFT_PWM_B_PIN, LEFT_ENC_A_PIN, LEFT_ENC_B_PIN);
-PID motorLeftPid(2500, 500, 250);
+PID motorLeftPid(2500, 1000, 250);
 Motor motorRight(RIGHT_PWM_A_PIN, RIGHT_PWM_B_PIN, RIGHT_ENC_A_PIN, RIGHT_ENC_B_PIN);
-PID motorRightPid(2500, 500, 250);
+PID motorRightPid(2500, 1000, 250);
 
 CommandPacket commandPacket;
 ProgressPacket progressPacket;
@@ -193,7 +193,7 @@ void loop() {
   float battery = analogRead(BATTERY_PIN) * (readVcc() / 1024.0) * 2;
 
   batterySmooth = batterySmooth * 0.9 + battery * 0.1;
-  if (batterySmooth < 6.5) {
+  if (batterySmooth < 5) {
     Serial.print("Battery low: ");
     Serial.print(batterySmooth);
     Serial.println("V");
@@ -208,7 +208,7 @@ void loop() {
   if (commandPacket.command.id == 0) {
     Serial.println("NO COMMAND");
     esp.write(ESP_DATA_HEADER);
-    esp.print(commandPacket.command.id);
+    esp.print(200);
     esp.print(",");
     esp.print(0.0f, 5);
     esp.println();
@@ -226,13 +226,13 @@ void loop() {
   float motorRightDistance = motorRight.distance();
   float rightPID = motorRightPid.calculate(distances.rightDistance, motorRightDistance);
 
-  if (abs(totalDistances.leftDistance - motorLeftDistance) > 0.025) {
+  if (abs(totalDistances.leftDistance - motorLeftDistance) > 0.0125) {
     setMotorSpeed(leftPID, motorLeft, maxSpeed);
   } else {
     setMotorSpeed(0, motorLeft, maxSpeed);
   }
 
-  if (abs(totalDistances.rightDistance - motorRightDistance) > 0.025) {
+  if (abs(totalDistances.rightDistance - motorRightDistance) > 0.0125) {
     setMotorSpeed(rightPID, motorRight, maxSpeed);
   } else {
     setMotorSpeed(0, motorRight, maxSpeed);
@@ -241,9 +241,23 @@ void loop() {
 //  Serial.print("Writing progress: ");
 //  Serial.println(distances.progress);
 
-  float progress = ((motorRightDistance / totalDistances.rightDistance + motorLeftDistance / totalDistances.leftDistance) / 2.0f) * commandPacket.command.val;
+  float progress = ((motorRightDistance / totalDistances.rightDistance + motorLeftDistance / totalDistances.leftDistance) / 2.0f) * -commandPacket.command.val;
+  Serial.print("cmd: ");
+  Serial.print(totalDistances.leftDistance);
+  Serial.print(", prg: ");
+  Serial.println(progress);
 
   esp.write(ESP_DATA_HEADER);
+
+  if (abs(commandPacket.command.val - progress) < 0.025) {
+    esp.print(200);
+    esp.print(",");
+    esp.print(0.0f, 4);
+    esp.println();
+    delay(1000);
+    return;
+  }
+
   esp.print(commandPacket.command.id);
   esp.print(",");
   esp.print(progress, 4);
@@ -254,7 +268,7 @@ void loop() {
 motorDistances getTotalDistances() {
   struct motorDistances distances;
   float distance;
-  
+
   switch (commandPacket.command.command) {
     case 'f':
       distances.leftDistance = commandPacket.command.val;
@@ -272,7 +286,7 @@ motorDistances getTotalDistances() {
 motorDistances getMotorDistances() {
   struct motorDistances distances;
   float distance;
-  
+
   switch (commandPacket.command.command) {
     case 'f':
       distance = getExpectedDistance(lastCommandTimestamp, commandPacket.command.val);
