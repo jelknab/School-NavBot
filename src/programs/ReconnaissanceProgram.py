@@ -91,7 +91,7 @@ class ReconnaissanceProgram(IProgram):
             if last_command_id == self.last_command.command_id:
                 self.last_command.command_id = -1
                 self.robot_x, self.robot_y, self.robot_rot = self.estimate_bot_position(self.last_command.value)
-                print(math.degrees(self.robot_rot), self.robot_x, self.robot_y)
+                # print(math.degrees(self.robot_rot), self.robot_x, self.robot_y)
 
             path_to_target = self.find_closest_unknown()
             if path_to_target is not None:

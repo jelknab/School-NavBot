@@ -27,6 +27,7 @@ class Measurement:
 
 class IProgram:
     def send_command(self, bot_id: int, command: Command):
+        print(command.command_id, command.command, command.value)
         self.mqtt_client.publish(f'navigation/{bot_id}', command.pack())
 
     def on_message(self, msg: MQTTMessage):

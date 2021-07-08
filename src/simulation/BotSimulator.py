@@ -8,7 +8,7 @@ from src.simulation.parts.Bot import Bot, Command
 from src.simulation.parts.DistanceSensor import DistanceSensor, DistanceSample
 from src.simulation.parts.Servo import Servo
 
-display = False
+display = True
 
 if display:
     os.environ['SDL_VIDEO_WINDOW_POS'] = "%d,%d" % (0, 30)
@@ -75,8 +75,8 @@ def draw_distance_sensor(sample_buffer: List[DistanceSample]):
             color=(255, 0, 255),
             start_pos=camera(sample.position[0], sample.position[1]),
             end_pos=camera(
-                sample.position[0] + math.sin(sample.servo_rotation + sample.rotation) * sample.distance_m * 1000,
-                sample.position[1] + math.cos(sample.servo_rotation + sample.rotation) * sample.distance_m * 1000
+                sample.position[0] + math.sin(robot.rotation + sample.servo_rotation) * sample.distance_m * 1000,
+                sample.position[1] + math.cos(robot.rotation + sample.servo_rotation) * sample.distance_m * 1000
             )
         )
 

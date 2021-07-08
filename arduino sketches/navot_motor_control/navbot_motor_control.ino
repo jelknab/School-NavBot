@@ -1,4 +1,5 @@
 #include <RotaryEncoder.h>
+#include <NeoSWSerial.h>
 
 #define LEFT_PWM_A_PIN 5
 #define LEFT_PWM_B_PIN 6
@@ -16,14 +17,40 @@
 #define RIGHT_ENC_A_PIN 11
 #define RIGHT_ENC_B_PIN 12
 
+#define ESP_RX 2
+#define ESP_TX 13
+#define ESP_DATA_HEADER 0x42
+
 #define BATTERY_PIN A5
 
-#define ACCELERATION_M_S 0.1f
-#define MAX_SPEED_M_S 0.33f
+#define ACCELERATION_M_S 0.05f
+#define MAX_SPEED_M_S 0.2f
 #define ACCELERATION_TIME MAX_SPEED_M_S / ACCELERATION_M_S
 #define ACCELERATION_DISTANCE 0.5 * ACCELERATION_M_S * ACCELERATION_TIME * ACCELERATION_TIME
 #define MOTOR_ENCODER_TICKS 816.335f
 #define WHEEL_CIRCUMFERENCE (2.0f * PI * 0.04f)
+
+typedef struct {
+  byte id;
+  char command;
+  float val;
+} Command_t;
+
+typedef union CommandPacket {
+  Command_t command;
+  byte byteArray[sizeof(Command_t)];
+};
+
+typedef union ProgressPacket {
+  float progress;
+  byte byteArray[sizeof(progress)];  
+};
+
+struct motorDistances {
+  float leftDistance;
+  float rightDistance;
+  float progress;
+};
 
 class PID {
   public:
@@ -31,22 +58,24 @@ class PID {
       this->kp = kp;
       this->ki = ki;
       this->kd = kd;
+      this->integral = 0;
+      this->timeStamp = millis();      
     }
-    
+
     float calculate(float setpoint, float measurement) {
-      double secondsPassed = (micros() - this->timeStamp) / 1000.0d / 1000.0d;
-      this->timeStamp = micros();
-      
+      double secondsPassed = (millis() - this->timeStamp) / 1000.0f;
+      this->timeStamp = millis();
+
       float error = setpoint - measurement;
       float proportional = error;
-      this->integral = this->integral + error * secondsPassed;
+      this->integral += error * secondsPassed;
       float derivative = (error - this->errorPrior) / secondsPassed;
       float output = this->kp * proportional + this->ki * integral + this->kd * derivative;
       this->errorPrior = error;
-      
+
       return output;
     }
-    
+
     float kp;
     float ki;
     float kd;
@@ -55,11 +84,17 @@ class PID {
     unsigned long timeStamp;
 };
 
-class Motor {    
+class Motor {
   public:
     Motor::Motor(uint8_t pwmPinA, uint8_t pwmPinB, uint8_t encPinA, uint8_t encPinB): encoder(encPinA, encPinB, RotaryEncoder::LatchMode::TWO03) {
       this->pwmPinA = pwmPinA;
       this->pwmPinB = pwmPinB;
+    }
+
+    void resetEncoder() {
+      this->encoder._position = 0;
+      this->encoder._positionExt = 0;
+      this->encoder._positionExtPrev = 0;
     }
 
     float distance() {
@@ -67,18 +102,18 @@ class Motor {
     }
 
     float rpm() {
-        double secondsPassed = (micros() - this->rpmTimeStamp) / 1000.0d / 1000.0d;
+      double secondsPassed = (micros() - this->rpmTimeStamp) / 1000.0d / 1000.0d;
 
-        long encoderPosition = this->encoder.getPosition();
-        long positionDifference = this->encoder.getPosition() - this->rpmPositionPrior;
-        double rpm = (positionDifference / MOTOR_ENCODER_TICKS) / secondsPassed * 60.0d;
-        
-        if (positionDifference != 0) {
-          this->rpmPositionPrior = encoderPosition;
-          this->rpmTimeStamp = micros();
-        }  
-      
-        return rpm;
+      long encoderPosition = this->encoder.getPosition();
+      long positionDifference = this->encoder.getPosition() - this->rpmPositionPrior;
+      double rpm = (positionDifference / MOTOR_ENCODER_TICKS) / secondsPassed * 60.0d;
+
+      if (positionDifference != 0) {
+        this->rpmPositionPrior = encoderPosition;
+        this->rpmTimeStamp = micros();
+      }
+
+      return rpm;
     }
 
 
@@ -94,19 +129,29 @@ PID motorLeftPid(2500, 500, 250);
 Motor motorRight(RIGHT_PWM_A_PIN, RIGHT_PWM_B_PIN, RIGHT_ENC_A_PIN, RIGHT_ENC_B_PIN);
 PID motorRightPid(2500, 500, 250);
 
+CommandPacket commandPacket;
+ProgressPacket progressPacket;
+
+NeoSWSerial esp(ESP_RX, ESP_TX);
+
+
 void setup() {
   Serial.begin(9600);
+  esp.begin(9600);
   setupIO();
   digitalWrite(LEFT_EN_PIN, HIGH);
   digitalWrite(RIGHT_EN_PIN, HIGH);
+
+  commandPacket.command.id = 0;
 }
 
 void setupIO() {
   PCIFR = B00000000;
-  PCMSK0 |= (1<<PCINT3) | (1<<PCINT4);
-  PCMSK2 |= (1<<PCINT19) | (1<<PCINT20);
-  PCICR |= (1<<PCIE2) | (1<<PCIE0);
-  
+  PCMSK0 |= (1 << PCINT3) | (1 << PCINT4);
+  PCMSK2 |= (1 << PCINT19) | (1 << PCINT20);
+  PCICR |= (1 << PCIE2) | (1 << PCIE0);
+  attachInterrupt(digitalPinToInterrupt(ESP_RX), ESP_ISR, CHANGE);
+
   pinMode(LEFT_PWM_A_PIN, OUTPUT);
   pinMode(LEFT_PWM_B_PIN, OUTPUT);
   pinMode(LEFT_EN_PIN, OUTPUT);
@@ -120,17 +165,38 @@ void setupIO() {
   pinMode(RIGHT_DIAG_PIN, INPUT);
 }
 
+unsigned long lastCommandTimestamp = 0;
+
 float batterySmooth = 6.0;
 void loop() {
+  if (esp.available()) {
+    if (esp.read() == ESP_DATA_HEADER) {
+      commandPacket.command.id = esp.readStringUntil(',').toInt();
+      commandPacket.command.command = esp.readStringUntil(',').charAt(0);
+      commandPacket.command.val = esp.readStringUntil('\n').toFloat();
+
+      motorLeft.resetEncoder();
+      motorRight.resetEncoder();
+      motorLeftPid.integral = 0;
+      motorRightPid.integral = 0;
+      lastCommandTimestamp = millis();
+
+      Serial.print("Received command: ");
+      Serial.print(commandPacket.command.id);
+      Serial.print(", ");
+      Serial.print(commandPacket.command.command);
+      Serial.print(", ");
+      Serial.println(commandPacket.command.val, 5);
+    }
+  }
+
   float battery = analogRead(BATTERY_PIN) * (readVcc() / 1024.0) * 2;
-  
+
   batterySmooth = batterySmooth * 0.9 + battery * 0.1;
   if (batterySmooth < 6.5) {
     Serial.print("Battery low: ");
     Serial.print(batterySmooth);
     Serial.println("V");
-
-    
     digitalWrite(LEFT_EN_PIN, LOW);
     digitalWrite(RIGHT_EN_PIN, LOW);
     return;
@@ -139,44 +205,90 @@ void loop() {
     digitalWrite(RIGHT_EN_PIN, HIGH);
   }
 
-  int maxSpeed = (6.0f / batterySmooth) * 255;
+  if (commandPacket.command.id == 0) {
+    Serial.println("NO COMMAND");
+    esp.write(ESP_DATA_HEADER);
+    esp.print(commandPacket.command.id);
+    esp.print(",");
+    esp.print(0.0f, 5);
+    esp.println();
+    delay(100);
+    return;
+  }
 
-  float distance = getExpectedDistance(millis() / 1000, -5);
-  
+  int maxSpeed = (6.0f / batterySmooth) * 255;
+  struct motorDistances distances = getMotorDistances();
+  struct motorDistances totalDistances = getTotalDistances();
+
   float motorLeftDistance = motorLeft.distance();
-  float leftPID = motorLeftPid.calculate(distance, motorLeftDistance);
+  float leftPID = motorLeftPid.calculate(distances.leftDistance, motorLeftDistance);
 
   float motorRightDistance = motorRight.distance();
-  float rightPID = motorRightPid.calculate(distance, motorRightDistance);
+  float rightPID = motorRightPid.calculate(distances.rightDistance, motorRightDistance);
 
-  float leftRightError = abs(motorLeftDistance) - abs(motorRightDistance);
-
-  if (abs(-5 - motorLeftDistance) > 0.025) {
+  if (abs(totalDistances.leftDistance - motorLeftDistance) > 0.025) {
     setMotorSpeed(leftPID, motorLeft, maxSpeed);
   } else {
     setMotorSpeed(0, motorLeft, maxSpeed);
   }
 
-  if (abs(-5 - motorRightDistance) > 0.025) {
+  if (abs(totalDistances.rightDistance - motorRightDistance) > 0.025) {
     setMotorSpeed(rightPID, motorRight, maxSpeed);
   } else {
     setMotorSpeed(0, motorRight, maxSpeed);
   }
 
-    Serial.println(distance - motorLeftDistance);
-  
-//  Serial.println(motorLeftDistance * 1000 - motorRightDistance * 1000);
-//  Serial.print("BATT: ");
-//  Serial.print(batterySmooth);
-//  Serial.print(", MAX_SPEED: ");
-//  Serial.print(maxSpeed);
-//  Serial.print(", DIST: ");
-//  Serial.print(distance*1000.0);
-//  Serial.print(", L_DIST: ");
-//  Serial.print(motorLeftDistance*1000.0);
-//  Serial.print(", R_DIST: ");
-//  Serial.println(motorRightDistance*1000.0);
+//  Serial.print("Writing progress: ");
+//  Serial.println(distances.progress);
+
+  float progress = ((motorRightDistance / totalDistances.rightDistance + motorLeftDistance / totalDistances.leftDistance) / 2.0f) * commandPacket.command.val;
+
+  esp.write(ESP_DATA_HEADER);
+  esp.print(commandPacket.command.id);
+  esp.print(",");
+  esp.print(progress, 4);
+  esp.println();
   delay(10);
+}
+
+motorDistances getTotalDistances() {
+  struct motorDistances distances;
+  float distance;
+  
+  switch (commandPacket.command.command) {
+    case 'f':
+      distances.leftDistance = commandPacket.command.val;
+      distances.rightDistance = commandPacket.command.val;
+      return distances;
+
+    case 'r':
+      float rotation_distance = WHEEL_CIRCUMFERENCE / (PI * 2.0f) * commandPacket.command.val;
+      distances.leftDistance = -rotation_distance;
+      distances.rightDistance = rotation_distance;
+      return distances;
+  }
+}
+
+motorDistances getMotorDistances() {
+  struct motorDistances distances;
+  float distance;
+  
+  switch (commandPacket.command.command) {
+    case 'f':
+      distance = getExpectedDistance(lastCommandTimestamp, commandPacket.command.val);
+      distances.leftDistance = distance;
+      distances.rightDistance = distance;
+      distances.progress = distance;
+      return distances;
+
+    case 'r':
+      float rotation_distance = WHEEL_CIRCUMFERENCE / (PI * 2.0f) * commandPacket.command.val;
+      distance = getExpectedDistance(lastCommandTimestamp, rotation_distance);
+      distances.leftDistance = -distance;
+      distances.rightDistance = distance;
+      distances.progress = (distance / rotation_distance) * commandPacket.command.val;
+      return distances;
+  }
 }
 
 void setMotorSpeed(int s, Motor &motor, int maxSpeed) {
@@ -189,7 +301,7 @@ void setMotorSpeed(int s, Motor &motor, int maxSpeed) {
     forward = motor.pwmPinB;
     backward = motor.pwmPinA;
   }
-  
+
   if (abs(s) > maxSpeed / 4 && rpm == 0.0) {
     analogWrite(backward, 0);
     analogWrite(forward, maxSpeed);
@@ -201,9 +313,9 @@ void setMotorSpeed(int s, Motor &motor, int maxSpeed) {
 }
 
 static inline int8_t sgn(float val) {
-  if (val < 0) return -1;
-  if (val==0) return 0;
-  return 1;
+  if (val < 0) return 1;
+  if (val == 0) return 0;
+  return -1;
 }
 
 float getExpectedDistance(unsigned long timestampMillis, float distanceM) {
@@ -255,19 +367,21 @@ float readVcc() {
   ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
   delay(2); // Wait for Vref to settle
   ADCSRA |= _BV(ADSC); // Convert
-  while (bit_is_set(ADCSRA,ADSC));
+  while (bit_is_set(ADCSRA, ADSC));
   result = ADCL;
-  result |= ADCH<<8;
+  result |= ADCH << 8;
   result = 1125300L / result; // Back-calculate AVcc in mV
   return result / 1000.0f;
 }
 
-int rightEncoderAPrior = 0;
-int rightEncoderBPrior = 0;
 ISR(PCINT0_vect) { // RIGHT_ENCODER CHANGE
   motorRight.encoder.tick();
 }
 
 ISR(PCINT2_vect) { // LEFT_ENCODER CHANGE
   motorLeft.encoder.tick();
+}
+
+void ESP_ISR() {
+  NeoSWSerial::rxISR( *portInputRegister( digitalPinToPort( ESP_RX ) ) );
 }
