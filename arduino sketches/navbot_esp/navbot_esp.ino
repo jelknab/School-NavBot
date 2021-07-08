@@ -5,7 +5,7 @@
 #include <PubSubClient.h>
 
 #define SERVO_ROT 190.0
-#define SERVO_ROT_DEG_SEC (2 / 60.0) // sec / 60deg
+#define SERVO_ROT_DEG_SEC (.75 / 60.0) // sec / 60deg
 #define SERVO_PIN D6
 
 #define MEASUREMENT_MSG_LENGTH 50
@@ -97,9 +97,6 @@ void setup() {
   if (!client.setBufferSize(1024)) {
     Serial.println("Could not allocate mqtt buffer size.");
   }
-
-  Serial.println("Swapping to serial2 after 5000ms when connected");
-  delay(5000);
   
   luna_data[0] = LUNA_DATA_HEADER;
   luna_data[1] = LUNA_DATA_HEADER;
@@ -120,12 +117,21 @@ void sendArduinoCommand() {
   Serial.print(",");
   Serial.print(commandPacket.command.command);
   Serial.print(",");
-  Serial.print(commandPacket.command.val, 4);
+  Serial.print(commandPacket.command.val, 5);
   Serial.println();
-  delay(50);
+  delay(25);
 }
 
 unsigned long lastRequestTimeStamp = 0;
+void askControllerCommand() {
+  if (millis() - lastRequestTimeStamp > 5000) {
+    lastRequestTimeStamp = millis();
+    byte boredCommand[2] = {0, commandPacket.command.id};
+    client.publish("robots/1", boredCommand, sizeof(boredCommand));
+  }
+  delay(50);
+}
+
 
 void loop() {   
   if (!client.connected()) {
@@ -142,15 +148,11 @@ void loop() {
       motorProgress.commandId = Serial.readStringUntil(',').toInt();
       motorProgress.progress = Serial.readStringUntil('\n').toFloat();
 
-      if (motorProgress.commandId == commandPacket.command.id) {
-        if (abs(motorProgress.progress - commandPacket.command.val) < 0.025) {
-          if (millis() - lastRequestTimeStamp > 1000) {
-            lastRequestTimeStamp = millis();
-            byte boredCommand[2] = {0, commandPacket.command.id};
-            client.publish("robots/1", boredCommand, sizeof(boredCommand));
-          }
+      if (motorProgress.commandId != commandPacket.command.id) {
+        if (motorProgress.commandId == 200) {
+          askControllerCommand();
+          return;
         }
-      } else {
         sendArduinoCommand();
       }
     }
@@ -172,7 +174,7 @@ void loop() {
 
           Measurement_t measurement;
           measurement.commandId = commandPacket.command.id;
-          measurement.progress = 0;
+          measurement.progress = motorProgress.progress;
           measurement.servoRotation = (map(analogRead(A0), 109, 1000, 180, 0) * 71) / 4068.0; // deg to rad
           measurement.distanceM = distance_cm / 100.0f;
 
@@ -191,9 +193,16 @@ void loop() {
 }
 
 void reconnect() {
+  if (serialSwapped) {
+    serialSwapped = false;
+    Serial.swap();
+  }
+  
   while (!client.connected()) {
     if (client.connect("arduinoClient")) {
       if (!serialSwapped) {
+        Serial.println("Connected to mqtt swapping serial.");
+        delay(100);
         serialSwapped = true;
         Serial.swap();
       }
