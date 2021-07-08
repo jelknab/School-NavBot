@@ -20,7 +20,7 @@ class Grid:
 
     def on_cell_seen(self, x, y):
         cell = self.get_cell(x, y)
-        self.set_cell(x, y, min(cell + 1, 9))
+        self.set_cell(x, y, min(cell + 2, 9))
 
     def set_cell(self, x, y, val):
         if y not in self.grid:
@@ -66,7 +66,7 @@ class ReconnaissanceProgram(IProgram):
         self.robot_y = 0
         self.robot_rot = 0
         self.last_command: Command = Command(0, 'r', 0)
-        self.grid = Grid(0.75)
+        self.grid = Grid(0.2)
 
     def estimate_bot_position(self, progress: float):
         if progress == 0.0:
@@ -171,12 +171,15 @@ class ReconnaissanceProgram(IProgram):
         self.screen.blit(s, (0, 0))
 
         for measurement in data:
+            if measurement.progress == -1:
+                continue
+
             if measurement.command_id == self.last_command.command_id:
                 if measurement.distance == 0:
                     measurement.distance = 8
 
                 est_x, est_y, est_rot = self.estimate_bot_position(measurement.progress)
-                rot = est_rot + measurement.servo
+                rot = est_rot + measurement.servo - math.pi / 2
                 ray_x = est_x + math.sin(rot) * measurement.distance
                 ray_y = est_y + math.cos(rot) * measurement.distance
 
@@ -196,8 +199,8 @@ class ReconnaissanceProgram(IProgram):
                     bresenham(
                         grid_est_x,
                         grid_est_y,
-                        int(round(est_x + math.sin(rot) * (measurement.distance - self.grid.block_size_m))),
-                        int(round(est_y + math.cos(rot) * (measurement.distance - self.grid.block_size_m)))
+                        grid_ray_x,
+                        grid_ray_y
                     )
                 )
 

@@ -3,3 +3,4 @@ paho-mqtt~=1.5.1
 Shapely~=1.7.1
 bresenham~=0.2.1
 Flask~=2.0.1
+Flask-Cors~=3.0.10
